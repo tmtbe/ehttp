@@ -85,6 +85,8 @@ mod web;
 #[cfg(target_arch = "wasm32")]
 pub use web::spawn_future;
 
+#[cfg(feature = "multipart")]
+pub mod multipart;
 #[cfg(feature = "streaming")]
 pub mod streaming;
 

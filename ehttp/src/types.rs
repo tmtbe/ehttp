@@ -1,3 +1,6 @@
+#[cfg(feature = "multipart")]
+use crate::multipart::MultipartBuilder;
+
 /// A simple HTTP request.
 #[derive(Clone, Debug)]
 pub struct Request {
@@ -38,6 +41,36 @@ impl Request {
     /// Add a `Header` for request.
     pub fn add_header(&mut self, key: String, value: String) {
         self.headers.push((key, value))
+    }
+
+    /// Multipart HTTP for both native and WASM.
+    ///
+    /// Requires the `multipart` feature to be enabled.
+    ///
+    /// Example:
+    /// ```
+    /// use std::io::Cursor;
+    /// use ehttp::multipart::MultipartBuilder;
+    /// let url = "https://www.example.com";
+    /// let request = ehttp::Request::multipart(url, MultipartBuilder::new()
+    ///     .add_file("image", "/home/user/image.png")
+    ///     .add_text("label", "lorem ipsum")
+    ///     .add_stream(&mut Cursor::new(vec![0,0,0,0]),
+    ///         "4_empty_bytes",
+    ///         Some("4_empty_bytes.png"),
+    ///         None));
+    /// ehttp::fetch(request, |result| {
+    ///
+    /// });
+    #[cfg(feature = "multipart")]
+    pub fn multipart(url: impl ToString, builder: MultipartBuilder) -> Self {
+        let (content_type, data) = builder.build();
+        Self {
+            method: "POST".to_string(),
+            url: url.to_string(),
+            body: data,
+            headers: crate::headers(&[("Accept", "*/*"), ("Content-Type", &*content_type)]),
+        }
     }
 
     /// Create a `POST` request with the given url and body.

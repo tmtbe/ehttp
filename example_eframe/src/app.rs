@@ -1,9 +1,11 @@
+use std::io::Cursor;
 use std::{
     ops::ControlFlow,
     sync::{Arc, Mutex},
 };
 
 use eframe::egui;
+use ehttp::multipart::MultipartBuilder;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -25,6 +27,7 @@ enum Download {
 pub struct DemoApp {
     url: String,
     method: Method,
+    is_multipart: bool,
     request_body: String,
     streaming: bool,
     download: Arc<Mutex<Download>>,
@@ -35,6 +38,7 @@ impl Default for DemoApp {
         Self {
             url: "https://raw.githubusercontent.com/emilk/ehttp/master/README.md".to_owned(),
             method: Method::Get,
+            is_multipart: false,
             request_body: r#"["posting some json"]"#.to_owned(),
             streaming: true,
             download: Arc::new(Mutex::new(Download::None)),
@@ -51,7 +55,22 @@ impl eframe::App for DemoApp {
                 let request = match self.method {
                     Method::Get => ehttp::Request::get(&self.url),
                     Method::Post => {
-                        ehttp::Request::post(&self.url, self.request_body.as_bytes().to_vec())
+                        if self.is_multipart {
+                            ehttp::Request::multipart(
+                                &self.url,
+                                MultipartBuilder::new()
+                                    .add_text("text1", "multipart1")
+                                    .add_text("text2", "multipart2")
+                                    .add_stream(
+                                        &mut Cursor::new(vec![0, 0, 0, 0]),
+                                        "4_empty_bytes",
+                                        Some("4_empty_bytes.png"),
+                                        None,
+                                    ),
+                            )
+                        } else {
+                            ehttp::Request::post(&self.url, self.request_body.as_bytes().to_vec())
+                        }
                     }
                 };
                 let download_store = self.download.clone();
@@ -167,18 +186,22 @@ impl DemoApp {
                 ui.end_row();
 
                 if self.method == Method::Post {
-                    ui.label("POST Body:");
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.request_body)
-                            .code_editor()
-                            .desired_rows(1),
-                    );
-                    ui.end_row();
+                    if !self.is_multipart {
+                        ui.label("POST Body:");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.request_body)
+                                .code_editor()
+                                .desired_rows(1),
+                        );
+                        ui.end_row();
+                    }
                 }
 
-                ui.checkbox(&mut self.streaming, "Use streaming fetch").on_hover_text(
-                    "The ehttp::streaming API allows you to process the data piece by piece as it is received.\n\
+                if !self.is_multipart {
+                    ui.checkbox(&mut self.streaming, "Use streaming fetch").on_hover_text(
+                        "The ehttp::streaming API allows you to process the data piece by piece as it is received.\n\
                     You might need to disable caching, throttle your download speed, and/or download a large file to see the data being streamed in.");
+                }
                 ui.end_row();
             });
 
@@ -225,13 +248,27 @@ impl DemoApp {
             let pastebin_url = "https://httpbin.org/post".to_owned();
             if ui
                 .selectable_label(
-                    (&self.url, self.method) == (&pastebin_url, Method::Post),
+                    (&self.url, self.method) == (&pastebin_url, Method::Post) && !self.is_multipart,
                     "POST to httpbin.org",
                 )
                 .clicked()
             {
                 self.url = pastebin_url;
                 self.method = Method::Post;
+                trigger_fetch = true;
+            }
+
+            let pastebin_url = "https://httpbin.org/post".to_owned();
+            if ui
+                .selectable_label(
+                    (&self.url, self.method) == (&pastebin_url, Method::Post) && self.is_multipart,
+                    "POST Multipart to httpbin.org",
+                )
+                .clicked()
+            {
+                self.url = pastebin_url;
+                self.method = Method::Post;
+                self.is_multipart = true;
                 trigger_fetch = true;
             }
         });
